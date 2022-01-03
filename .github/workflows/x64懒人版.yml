@@ -31,7 +31,7 @@ jobs:
     steps:
     #- name: TG notification #TG推送
     #  run: curl "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&text=${{ env.FILE_NAME }}开始编译"     
-    #- name: WeChat notification #pushbot推送
+    - name: WeChat notification #pushbot推送
     #  run: curl -H "Content-Type:application/json" -X POST -d '{"token":"${{ secrets.pushbot }}","title":"Actions云编译","content":"${{ env.FILE_NAME }}开始编译","template":"json"}' http://www.pushplus.plus/send
 
     - name: Checkout
@@ -49,7 +49,6 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
-
     - name: Clone source code # 克隆源代码
       id: source
       working-directory: /workdir
@@ -64,7 +63,6 @@ jobs:
         echo "useVersionInfo=$useVersionInfo" >> $GITHUB_ENV
         echo "DATE=$(date "+%Y年%m月%d日%H时%M分")" >> $GITHUB_ENV
         echo "DATE1=$(date "+%Y.%m.%d")" >> $GITHUB_ENV
-
     - name: Load custom configuration
       run: |
         [ -e files ] && mv files openwrt/files
@@ -78,7 +76,7 @@ jobs:
         sed -i '/lede/ { s/org/org\/snapshots/g }' package/lean/default-settings/files/zzz-default-settings
         sed -i '/openwrt_luci/ { s/sed/# sed/g; }'  package/lean/default-settings/files/zzz-default-settings
         sed -i 's#https://mirrors.cloud.tencent.com/lede#http://256pd.top:9666/懒人版/bin#g' package/lean/default-settings/files/zzz-default-settings
-
+        sed -i 's/IMG_PREFIX:=/IMG_PREFIX:=$(LINUX_VERSION)-/g' include/image.mk
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
       if: (github.event.inputs.ssh == 'true' && github.event.inputs.ssh  != 'false') || contains(github.event.action, 'sshlx64')
@@ -94,7 +92,6 @@ jobs:
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
-
     - name: Compile the firmware
       id: compile
       run: |
@@ -102,7 +99,6 @@ jobs:
         echo -e "$(($(nproc) + 1)) thread compile"
         make -j$(($(nproc) + 1)) || make -j1 V=s
         echo "::set-output name=status::success"        
-
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
@@ -119,7 +115,6 @@ jobs:
         bzip2 *.img
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "::set-output name=status::success"
-
     - name: Upload bin directory
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true' && !cancelled()
@@ -153,17 +148,15 @@ jobs:
         curl -fsSL git.io/file-transfer | sh
         ./transfer cow --block 2621440 -s -p 64 --no-progress ${{ env.FIRMWARE }} 2>&1 | tee cowtransfer.log
         echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
-
     - name: Upload firmware to WeTransfer
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
       run: |
         curl -fsSL git.io/file-transfer | sh
         ./transfer wet -s -p 16 --no-progress ${{ env.FIRMWARE }} 2>&1 | tee wetransfer.log
         echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
-
     #- name: TG notification #TG推送
     #  if: steps.organize.outputs.status == 'success' && !cancelled()
     #  run: curl "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}&text=${{ env.FILE_NAME }}发布成功-编译结束\n${{ env.useVersionInfo }}"
-   # - name: WeChat notification #pushbot推送
-   #   if: steps.organize.outputs.status == 'success' && !cancelled()
-   #   run: curl -H "Content-Type:application/json" -X POST -d '{"token":"${{ secrets.pushbot }}","title":"Actions云编译","content":"${{ env.FILE_NAME }}发布成功-编译结束${{ env.time }}","template":"json"}' http://www.pushplus.plus/send
+    - name: WeChat notification #pushbot推送
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      #  run: curl -H "Content-Type:application/json" -X POST -d '{"token":"${{ secrets.pushbot }}","title":"Actions云编译","content":"${{ env.FILE_NAME }}发布成功-编译结束${{ env.time }}","template":"json"}' http://www.pushplus.plus/send
